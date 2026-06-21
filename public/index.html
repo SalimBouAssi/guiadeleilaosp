@@ -37,28 +37,20 @@
     <section class="section"><div class="container"><div class="legal"><h3>⚠️ Importante</h3><p>O Leilão Inteligente SP é um material digital de acesso imediato, disponibilizado eletronicamente após a confirmação do pagamento.</p><p>Este material possui caráter exclusivamente informativo e educacional. Não garantimos lucro, aprovação em leilões, arrematação de veículos ou qualquer resultado financeiro específico.</p></div></div></section>
     <footer>Informação • Estratégia • Oportunidade<br><br>Leilão Inteligente SP © 2026</footer>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const form = document.getElementById('checkoutForm');
-            const msg = document.getElementById('msg');
-            const btn = form.querySelector('button');
-            const pixBox = document.getElementById('pixBox');
-            const pixQr = document.getElementById('pixQr');
-            const pixCode = document.getElementById('pixCode');
-            const copyPix = document.getElementById('copyPix');
-            const copyOk = document.getElementById('copyOk');
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const form = document.getElementById('checkoutForm');
+        const msg = document.getElementById('msg');
+        const btn = form.querySelector('button');
 
-            copyPix.addEventListener('click', async () => {
-                await navigator.clipboard.writeText(pixCode.value);
-                copyOk.style.display = 'block';
-                setTimeout(() => copyOk.style.display = 'none', 2500);
-            });
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            btn.disabled = true;
+            msg.textContent = 'Abrindo checkout seguro...';
 
-            form.addEventListener('submit', (e) => {
-                e.preventDefault();
-                window.location.href = 'https://mpago.la/2ESH1hL';
-            });
+            window.location.href = 'https://mpago.la/2ESH1hL';
         });
-    </script>
+    });
+</script>
 </body>
 </html>
