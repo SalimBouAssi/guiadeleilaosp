@@ -27,6 +27,14 @@ function env(name, fallback = '') {
   return process.env[name] || fallback;
 }
 
+function cleanBaseUrl(value) {
+  return String(value || '').replace(/\/$/, '');
+}
+
+function onlyUnique(value, index, array) {
+  return value && array.indexOf(value) === index;
+}
+
 async function readOrders() {
   try {
     const raw = await fs.readFile(DATA_FILE, 'utf8');
@@ -67,13 +75,43 @@ async function findOrder(id) {
   return orders.find((order) => order.id === id);
 }
 
+async function findOrderByPaymentId(paymentId) {
+  const orders = await readOrders();
+  return orders.find((order) => String(order.paymentId) === String(paymentId));
+}
+
+async function resolveMaterialPath() {
+  const configured = env('MATERIAL_FILE', 'material/material.html');
+
+  const candidates = [
+    configured,
+    'material/material.html',
+    'material/Leilao-Inteligente-SP.html'
+  ].filter(onlyUnique);
+
+  for (const candidate of candidates) {
+    const fullPath = path.join(__dirname, candidate);
+    try {
+      await fs.access(fullPath);
+      return fullPath;
+    } catch {
+      // tenta o próximo nome
+    }
+  }
+
+  throw new Error(`Material não encontrado. Tentados: ${candidates.join(', ')}`);
+}
+
 async function sendMaterialEmail(order) {
   if (!process.env.RESEND_API_KEY) {
     throw new Error('RESEND_API_KEY ausente no Railway.');
   }
 
-  const materialFile = env('MATERIAL_FILE', 'material/material.html');
-  const materialPath = path.join(__dirname, materialFile);
+  if (!order.email) {
+    throw new Error('E-mail do comprador ausente. Não foi possível enviar o material.');
+  }
+
+  const materialPath = await resolveMaterialPath();
   const fileBuffer = await fs.readFile(materialPath);
 
   const html = `
@@ -90,7 +128,7 @@ async function sendMaterialEmail(order) {
   `;
 
   return await resend.emails.send({
-    from: env('FROM_EMAIL', 'Leilão Inteligente SP <suporte@guiadeleilaosp.com.br>'),
+    from: env('FROM_EMAIL', 'suporte@guiadeleilaosp.com.br'),
     to: [order.email],
     subject: 'Seu material Leilão Inteligente SP',
     html,
@@ -111,6 +149,99 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.post('/api/create-pix', async (req, res) => {
+  try {
+    const { name, email, whatsapp } = req.body;
+
+    if (!name || !email || !whatsapp) {
+      return res.status(400).json({ error: 'Preencha nome, e-mail e WhatsApp.' });
+    }
+
+    const orderId = crypto.randomUUID();
+    const productTitle = env('PRODUCT_TITLE', 'Leilão Inteligente SP');
+    const productPrice = Number(env('PRODUCT_PRICE', '27.99'));
+    const publicBaseUrl = cleanBaseUrl(env('PUBLIC_BASE_URL'));
+
+    if (!process.env.MP_ACCESS_TOKEN) {
+      console.error('MP_ACCESS_TOKEN ausente.');
+      return res.status(500).json({ error: 'Mercado Pago não configurado.' });
+    }
+
+    if (!publicBaseUrl) {
+      console.error('PUBLIC_BASE_URL ausente.');
+      return res.status(500).json({ error: 'URL pública não configurada.' });
+    }
+
+    const paymentPayload = {
+      transaction_amount: productPrice,
+      description: productTitle,
+      payment_method_id: 'pix',
+      payer: {
+        email,
+        first_name: name
+      },
+      external_reference: orderId,
+      notification_url: `${publicBaseUrl}/webhooks/mercadopago`,
+      metadata: {
+        order_id: orderId,
+        customer_name: name,
+        customer_email: email,
+        customer_whatsapp: whatsapp
+      }
+    };
+
+    const mpResponse = await fetch('https://api.mercadopago.com/v1/payments', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env('MP_ACCESS_TOKEN')}`,
+        'Content-Type': 'application/json',
+        'X-Idempotency-Key': orderId
+      },
+      body: JSON.stringify(paymentPayload)
+    });
+
+    const payment = await mpResponse.json();
+    const transactionData = payment?.point_of_interaction?.transaction_data || {};
+
+    await saveOrder({
+      id: orderId,
+      name,
+      email,
+      whatsapp,
+      amount: productPrice,
+      status: payment?.status || 'pending',
+      paymentId: payment?.id ? String(payment.id) : null,
+      paymentMethod: 'pix',
+      pixQrCode: transactionData.qr_code || null,
+      pixQrCodeBase64: transactionData.qr_code_base64 || null,
+      pixTicketUrl: transactionData.ticket_url || null,
+      paymentResponse: payment
+    });
+
+    if (mpResponse.ok && transactionData.qr_code) {
+      console.log('Pix criado:', orderId, payment?.id);
+      return res.json({
+        orderId,
+        paymentId: payment?.id,
+        status: payment?.status,
+        qrCode: transactionData.qr_code,
+        qrCodeBase64: transactionData.qr_code_base64,
+        ticketUrl: transactionData.ticket_url
+      });
+    }
+
+    console.error('Mercado Pago não retornou Pix:', JSON.stringify(payment));
+    return res.status(400).json({
+      error: 'Não foi possível gerar Pix.',
+      details: payment
+    });
+
+  } catch (error) {
+    console.error('Erro ao criar Pix:', error);
+    return res.status(500).json({ error: 'Erro ao criar Pix.' });
+  }
+});
+
 app.post('/api/create-checkout', async (req, res) => {
   try {
     const { name, email, whatsapp } = req.body;
@@ -122,8 +253,8 @@ app.post('/api/create-checkout', async (req, res) => {
     const orderId = crypto.randomUUID();
     const productTitle = env('PRODUCT_TITLE', 'Leilão Inteligente SP');
     const productPrice = Number(env('PRODUCT_PRICE', '27.99'));
-    const publicBaseUrl = env('PUBLIC_BASE_URL');
-    const landingUrl = env('LANDING_URL', 'https://guiadeleilaosp.com.br').replace(/\/$/, '');
+    const publicBaseUrl = cleanBaseUrl(env('PUBLIC_BASE_URL'));
+    const landingUrl = cleanBaseUrl(env('LANDING_URL', 'https://guiadeleilaosp.com.br'));
 
     if (!process.env.MP_ACCESS_TOKEN) {
       console.error('MP_ACCESS_TOKEN ausente. Usando fallback.');
@@ -156,7 +287,7 @@ app.post('/api/create-checkout', async (req, res) => {
         customer_email: email,
         customer_whatsapp: whatsapp
       },
-      notification_url: `${publicBaseUrl.replace(/\/$/, '')}/webhooks/mercadopago`,
+      notification_url: `${publicBaseUrl}/webhooks/mercadopago`,
       back_urls: {
         success: `${landingUrl}/obrigado.html`,
         pending: `${landingUrl}/pendente.html`,
@@ -211,6 +342,42 @@ app.post('/api/create-checkout', async (req, res) => {
   }
 });
 
+function extractPaymentId(req) {
+  const value =
+    req.body?.data?.id ||
+    req.body?.resource ||
+    req.query?.id ||
+    req.query?.['data.id'];
+
+  if (!value) return null;
+
+  const text = String(value);
+  if (text.includes('/')) {
+    return text.split('/').filter(Boolean).pop();
+  }
+
+  return text;
+}
+
+function buildOrderFromPayment(payment, paymentId) {
+  const payer = payment?.payer || {};
+  const payerName = [payer.first_name, payer.last_name].filter(Boolean).join(' ').trim();
+
+  return {
+    id: payment.external_reference || payment.metadata?.order_id || `mp_${paymentId}`,
+    name: payment.metadata?.customer_name || payerName || payer.nickname || 'cliente',
+    email: payment.metadata?.customer_email || payer.email || payment?.additional_info?.payer?.email || '',
+    whatsapp: payment.metadata?.customer_whatsapp || '',
+    amount: payment.transaction_amount || Number(env('PRODUCT_PRICE', '27.99')),
+    status: payment.status || 'unknown',
+    paymentId: String(paymentId),
+    paymentMethod: payment.payment_method_id || payment.payment_type_id || '',
+    paymentType: payment.payment_type_id || '',
+    source: payment.external_reference || payment.metadata?.order_id ? 'pedido_com_order_id' : 'pagamento_sem_order_id',
+    paymentResponse: payment
+  };
+}
+
 async function processMercadoPagoPayment(paymentId) {
   try {
     if (!paymentId) {
@@ -226,24 +393,44 @@ async function processMercadoPagoPayment(paymentId) {
 
     const payment = await paymentResponse.json();
 
+    if (!paymentResponse.ok) {
+      console.error('Pagamento não encontrado ou não autorizado:', JSON.stringify({
+        paymentId,
+        status: paymentResponse.status,
+        payment
+      }));
+      return;
+    }
+
     console.log('Webhook Mercado Pago:', JSON.stringify({
       paymentId,
       status: payment.status,
-      external_reference: payment.external_reference
+      external_reference: payment.external_reference,
+      payment_method_id: payment.payment_method_id,
+      payment_type_id: payment.payment_type_id,
+      payer_email: payment?.payer?.email
     }));
 
     const orderId = payment.external_reference || payment.metadata?.order_id;
 
-    if (!orderId) {
-      console.error('Pagamento sem external_reference:', JSON.stringify(payment));
-      return;
+    let order = null;
+
+    if (orderId) {
+      order = await findOrder(orderId);
     }
 
-    const order = await findOrder(orderId);
+    if (!order) {
+      order = await findOrderByPaymentId(paymentId);
+    }
 
     if (!order) {
-      console.error('Pedido não encontrado para pagamento:', orderId);
-      return;
+      order = buildOrderFromPayment(payment, paymentId);
+      console.log('Pedido criado a partir do pagamento Mercado Pago:', JSON.stringify({
+        id: order.id,
+        email: order.email,
+        paymentId: order.paymentId,
+        paymentMethod: order.paymentMethod
+      }));
     }
 
     if (payment.status !== 'approved') {
@@ -251,8 +438,12 @@ async function processMercadoPagoPayment(paymentId) {
         ...order,
         status: payment.status || 'unknown',
         paymentId: String(paymentId),
+        paymentMethod: payment.payment_method_id || payment.payment_type_id || order.paymentMethod || '',
+        paymentType: payment.payment_type_id || order.paymentType || '',
         paymentResponse: payment
       });
+
+      console.log('Pagamento ainda não aprovado:', paymentId, payment.status);
       return;
     }
 
@@ -261,18 +452,24 @@ async function processMercadoPagoPayment(paymentId) {
       return;
     }
 
-    const emailResult = await sendMaterialEmail(order);
-
-    await saveOrder({
+    const finalOrder = {
       ...order,
       status: 'approved',
       paymentId: String(paymentId),
-      paymentResponse: payment,
+      paymentMethod: payment.payment_method_id || payment.payment_type_id || order.paymentMethod || '',
+      paymentType: payment.payment_type_id || order.paymentType || '',
+      paymentResponse: payment
+    };
+
+    const emailResult = await sendMaterialEmail(finalOrder);
+
+    await saveOrder({
+      ...finalOrder,
       emailSentAt: new Date().toISOString(),
       emailResult
     });
 
-    console.log('Material enviado para:', order.email);
+    console.log('Material enviado automaticamente para:', finalOrder.email);
 
   } catch (error) {
     console.error('Erro ao processar pagamento/webhook:', error);
@@ -281,27 +478,14 @@ async function processMercadoPagoPayment(paymentId) {
 
 app.post('/webhooks/mercadopago', async (req, res) => {
   res.sendStatus(200);
-
-  const paymentId =
-    req.body?.data?.id ||
-    req.query?.id ||
-    req.query?.['data.id'];
-
-  await processMercadoPagoPayment(paymentId);
+  await processMercadoPagoPayment(extractPaymentId(req));
 });
 
 app.get('/webhooks/mercadopago', async (req, res) => {
   res.sendStatus(200);
-
-  const paymentId =
-    req.query?.id ||
-    req.query?.['data.id'];
-
-  await processMercadoPagoPayment(paymentId);
+  await processMercadoPagoPayment(extractPaymentId(req));
 });
 
 app.listen(PORT, () => {
   console.log('Servidor rodando');
 });
-
-// force deploy backend final orderId

@@ -20,6 +20,12 @@
         .oferta{max-width:760px;margin:auto;background:#151515;padding:40px;border-radius:20px;border:2px solid #ff7a00;text-align:center}.de{color:#888;font-size:26px;text-decoration:line-through}.por{font-size:82px;font-weight:900;color:#ff7a00}.selo{background:#ff7a00;color:#000;display:inline-block;padding:10px 20px;border-radius:50px;font-weight:900;margin-bottom:20px}
         .form{margin-top:25px;text-align:left}.form label{display:block;margin:12px 0 6px;color:#ddd;font-weight:700}.form input{width:100%;padding:15px;border-radius:10px;border:1px solid #333;background:#0b0b0b;color:#fff;font-size:16px}.form button{width:100%;margin-top:20px}
         .msg{margin-top:15px;color:#ccc;font-size:14px;text-align:center;line-height:1.6}.legal{max-width:1000px;margin:auto;background:#101010;padding:30px;border-radius:15px;border:1px solid #333;color:#aaa;font-size:14px;line-height:1.8}.legal h3{color:#ff7a00;margin-bottom:12px}
+
+        .pix-box{display:none;margin-top:20px;background:#0b0b0b;border:1px solid #ff7a00;border-radius:15px;padding:20px;text-align:center}
+        .pix-box img{max-width:260px;width:100%;background:#fff;border-radius:12px;padding:10px;margin:15px auto;display:block}
+        .pix-code{width:100%;min-height:110px;padding:12px;border-radius:10px;border:1px solid #333;background:#111;color:#fff;font-size:13px;resize:none}
+        .copy-btn{width:100%;margin-top:10px;background:#fff;color:#000;padding:14px;font-weight:900;border-radius:10px;border:none;cursor:pointer}
+        .copy-ok{color:#39ff88;margin-top:10px;font-size:14px;display:none}
         footer{padding:40px;text-align:center;color:#999}@media(max-width:900px){.hero-content{flex-direction:column}h1{font-size:42px;text-align:center}.headline{font-size:28px;text-align:center}.sub{font-size:18px;text-align:center}.left{text-align:center}.mockup{max-width:100%}.botao{width:100%;max-width:420px}.por{font-size:58px}}
     </style>
 </head>
@@ -27,7 +33,7 @@
     <section class="hero"><div class="container"><div class="hero-content"><div class="left"><div class="badge">GUIA DIGITAL DE LEILÕES</div><h1>LEILÃO INTELIGENTE SP</h1><div class="headline">Pare de entrar em leilões no escuro.</div><div class="sub">Tenha acesso aos principais leiloeiros, links oficiais, checklist de análise e uma metodologia simples para reduzir erros antes de dar lances.</div><a href="#comprar" class="botao">QUERO ACESSAR AGORA</a><div class="beneficios"><div>🔒 Pagamento Seguro</div><div>⚡ Acesso Imediato</div><div>📱 Mobile e PC</div><div>🚀 Projeto em Expansão</div></div></div><div class="right"><div class="mockup"><h3>📊 PLANILHA DE LEILÕES</h3><div>✅ Leiloeiros Verificados</div><div>✅ Checklist Completo</div><div>✅ Fórmula de Margem</div><div>✅ Links Oficiais</div><div>✅ Consulta Rápida</div></div></div></div></div></section>
     <section class="section dark"><div class="container"><h2 class="titulo">Você já teve medo de...</h2><p class="subtitulo">Entrar em um leilão e transformar uma oportunidade em prejuízo?</p><div class="grid"><div class="card">🚨 Cair em golpes e sites falsos.</div><div class="card">🚨 Dar um lance acima do valor correto.</div><div class="card">🚨 Descobrir taxas escondidas depois.</div><div class="card">🚨 Comprar errado e perder dinheiro.</div></div></div></section>
     <section class="section"><div class="container"><h2 class="titulo">O que você recebe</h2><div class="grid"><div class="card">✅ Principais leiloeiros organizados</div><div class="card">✅ Links oficiais verificados</div><div class="card">✅ Checklist antes do lance</div><div class="card">✅ Fórmula de cálculo de margem</div><div class="card">✅ Tabela rápida de análise</div><div class="card">✅ Consulta simples e prática</div></div></div></section>
-    <section id="comprar" class="section dark"><div class="container"><div class="oferta"><div class="selo">OFERTA DE LANÇAMENTO</div><div class="de">De R$ 97,90</div><div class="por">R$ 27,99</div><p style="font-size:22px;margin-top:10px;">Pagamento único</p><p style="margin-top:10px;color:#ccc;">Acesso imediato após confirmação</p><form class="form" id="checkoutForm"><label>Nome</label><input name="name" required placeholder="Seu nome"><label>E-mail para receber o material</label><input name="email" required type="email" placeholder="seuemail@email.com"><label>WhatsApp</label><input name="whatsapp" required placeholder="11999999999"><button class="botao" type="submit">PREENCHER E PAGAR</button><div class="msg" id="msg">Após preencher, você será enviado ao checkout seguro.</div></form></div></div></section>
+    <section id="comprar" class="section dark"><div class="container"><div class="oferta"><div class="selo">OFERTA DE LANÇAMENTO</div><div class="de">De R$ 97,90</div><div class="por">R$ 27,99</div><p style="font-size:22px;margin-top:10px;">Pagamento único</p><p style="margin-top:10px;color:#ccc;">Acesso imediato após confirmação</p><form class="form" id="checkoutForm"><label>Nome</label><input name="name" required placeholder="Seu nome"><label>E-mail para receber o material</label><input name="email" required type="email" placeholder="seuemail@email.com"><label>WhatsApp</label><input name="whatsapp" required placeholder="11999999999"><button class="botao" type="submit">PAGAR COM PIX OU CARTÃO</button><div class="msg" id="msg">Após preencher, você será redirecionado para o checkout seguro do Mercado Pago.</div></form><div class="pix-box" id="pixBox"><h3 style="color:#ff7a00;margin-bottom:10px;">Pague com Pix</h3><p style="color:#ccc;">Escaneie o QR Code ou copie o código abaixo.</p><img id="pixQr" alt="QR Code Pix"><textarea class="pix-code" id="pixCode" readonly></textarea><button class="copy-btn" id="copyPix" type="button">COPIAR PIX COPIA E COLA</button><div class="copy-ok" id="copyOk">Código Pix copiado.</div><p style="color:#ccc;font-size:13px;margin-top:12px;">Após o pagamento aprovado, o material é enviado automaticamente para o e-mail informado.</p></div></div></div></section>
     <section class="section"><div class="container"><div class="legal"><h3>⚠️ Importante</h3><p>O Leilão Inteligente SP é um material digital de acesso imediato, disponibilizado eletronicamente após a confirmação do pagamento.</p><p>Este material possui caráter exclusivamente informativo e educacional. Não garantimos lucro, aprovação em leilões, arrematação de veículos ou qualquer resultado financeiro específico.</p></div></div></section>
     <footer>Informação • Estratégia • Oportunidade<br><br>Leilão Inteligente SP © 2026</footer>
 
@@ -36,34 +42,21 @@
             const form = document.getElementById('checkoutForm');
             const msg = document.getElementById('msg');
             const btn = form.querySelector('button');
+            const pixBox = document.getElementById('pixBox');
+            const pixQr = document.getElementById('pixQr');
+            const pixCode = document.getElementById('pixCode');
+            const copyPix = document.getElementById('copyPix');
+            const copyOk = document.getElementById('copyOk');
 
-            form.addEventListener('submit', async (e) => {
+            copyPix.addEventListener('click', async () => {
+                await navigator.clipboard.writeText(pixCode.value);
+                copyOk.style.display = 'block';
+                setTimeout(() => copyOk.style.display = 'none', 2500);
+            });
+
+            form.addEventListener('submit', (e) => {
                 e.preventDefault();
-                btn.disabled = true;
-                msg.textContent = 'Gerando checkout seguro...';
-
-                const formData = Object.fromEntries(new FormData(form));
-
-                try {
-                    const res = await fetch('https://sweet-determination-production-4696.up.railway.app/api/create-checkout', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(formData)
-                    });
-
-                    const data = await res.json();
-                    const url = data.checkoutUrl || data.init_point || data.url;
-
-                    if (res.ok && url) {
-                        window.location.href = url;
-                    } else {
-                        throw new Error(data.message || 'Erro ao conectar com o servidor.');
-                    }
-                } catch (err) {
-                    console.error(err);
-                    msg.textContent = 'Erro: ' + err.message;
-                    btn.disabled = false;
-                }
+                window.location.href = 'https://mpago.la/2ESH1hL';
             });
         });
     </script>
