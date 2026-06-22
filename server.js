@@ -31,10 +31,6 @@ function cleanBaseUrl(value) {
   return String(value || '').replace(/\/$/, '');
 }
 
-function onlyUnique(value, index, array) {
-  return value && array.indexOf(value) === index;
-}
-
 async function readOrders() {
   try {
     const raw = await fs.readFile(DATA_FILE, 'utf8');
@@ -75,54 +71,24 @@ async function findOrder(id) {
   return orders.find((order) => order.id === id);
 }
 
-async function findOrderByPaymentId(paymentId) {
-  const orders = await readOrders();
-  return orders.find((order) => String(order.paymentId) === String(paymentId));
-}
-
-async function resolveMaterialPath() {
-  const configured = env('MATERIAL_FILE', 'material/material.html');
-
-  const candidates = [
-    configured,
-    'material/material.html',
-    'material/Leilao-Inteligente-SP.html'
-  ].filter(onlyUnique);
-
-  for (const candidate of candidates) {
-    const fullPath = path.join(__dirname, candidate);
-    try {
-      await fs.access(fullPath);
-      return fullPath;
-    } catch {
-      // tenta o próximo nome
-    }
-  }
-
-  throw new Error(`Material não encontrado. Tentados: ${candidates.join(', ')}`);
-}
-
 async function sendMaterialEmail(order) {
   if (!process.env.RESEND_API_KEY) {
     throw new Error('RESEND_API_KEY ausente no Railway.');
   }
 
-  if (!order.email) {
-    throw new Error('E-mail do comprador ausente. Não foi possível enviar o material.');
-  }
-
-  const materialPath = await resolveMaterialPath();
+  const materialFile = env('MATERIAL_FILE', 'material/material.html');
+  const materialPath = path.join(__dirname, materialFile);
   const fileBuffer = await fs.readFile(materialPath);
 
   const html = `
     <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
-      <h2>Leilão Inteligente SP</h2>
-      <p>Olá, ${order.name || 'cliente'}.</p>
+      <h2>Leilao Inteligente SP</h2>
+      <p>Ola, ${order.name || 'cliente'}.</p>
       <p>Pagamento confirmado.</p>
-      <p>Seu material digital está em anexo neste e-mail.</p>
-      <p><strong>Produto:</strong> Leilão Inteligente SP</p>
+      <p>Seu material digital esta em anexo neste e-mail.</p>
+      <p><strong>Produto:</strong> Leilao Inteligente SP</p>
       <p><strong>Valor:</strong> R$ ${Number(order.amount || 27.99).toFixed(2).replace('.', ',')}</p>
-      <p>Este material é informativo e educacional. Não garante lucro, arrematação ou resultado financeiro específico.</p>
+      <p>Este material e informativo e educacional. Nao garante lucro, arrematacao ou resultado financeiro especifico.</p>
       <p>Obrigado pela compra.</p>
     </div>
   `;
@@ -130,7 +96,7 @@ async function sendMaterialEmail(order) {
   return await resend.emails.send({
     from: env('FROM_EMAIL', 'suporte@guiadeleilaosp.com.br'),
     to: [order.email],
-    subject: 'Seu material Leilão Inteligente SP',
+    subject: 'Seu material Leilao Inteligente SP',
     html,
     attachments: [
       {
@@ -164,12 +130,12 @@ app.post('/api/create-pix', async (req, res) => {
 
     if (!process.env.MP_ACCESS_TOKEN) {
       console.error('MP_ACCESS_TOKEN ausente.');
-      return res.status(500).json({ error: 'Mercado Pago não configurado.' });
+      return res.status(500).json({ error: 'Mercado Pago nao configurado.' });
     }
 
     if (!publicBaseUrl) {
       console.error('PUBLIC_BASE_URL ausente.');
-      return res.status(500).json({ error: 'URL pública não configurada.' });
+      return res.status(500).json({ error: 'URL publica nao configurada.' });
     }
 
     const paymentPayload = {
@@ -211,7 +177,6 @@ app.post('/api/create-pix', async (req, res) => {
       amount: productPrice,
       status: payment?.status || 'pending',
       paymentId: payment?.id ? String(payment.id) : null,
-      paymentMethod: 'pix',
       pixQrCode: transactionData.qr_code || null,
       pixQrCodeBase64: transactionData.qr_code_base64 || null,
       pixTicketUrl: transactionData.ticket_url || null,
@@ -230,9 +195,9 @@ app.post('/api/create-pix', async (req, res) => {
       });
     }
 
-    console.error('Mercado Pago não retornou Pix:', JSON.stringify(payment));
+    console.error('Mercado Pago nao retornou Pix:', JSON.stringify(payment));
     return res.status(400).json({
-      error: 'Não foi possível gerar Pix.',
+      error: 'Nao foi possivel gerar Pix.',
       details: payment
     });
 
@@ -342,40 +307,98 @@ app.post('/api/create-checkout', async (req, res) => {
   }
 });
 
-function extractPaymentId(req) {
-  const value =
-    req.body?.data?.id ||
-    req.body?.resource ||
-    req.query?.id ||
-    req.query?.['data.id'];
-
-  if (!value) return null;
-
-  const text = String(value);
-  if (text.includes('/')) {
-    return text.split('/').filter(Boolean).pop();
-  }
-
-  return text;
+function paymentEmail(payment) {
+  return (
+    payment?.payer?.email ||
+    payment?.metadata?.customer_email ||
+    payment?.additional_info?.payer?.email ||
+    payment?.additional_info?.payer?.email_address ||
+    ''
+  );
 }
 
-function buildOrderFromPayment(payment, paymentId) {
-  const payer = payment?.payer || {};
-  const payerName = [payer.first_name, payer.last_name].filter(Boolean).join(' ').trim();
+function paymentName(payment) {
+  return (
+    payment?.metadata?.customer_name ||
+    payment?.payer?.first_name ||
+    payment?.additional_info?.payer?.first_name ||
+    'cliente'
+  );
+}
 
-  return {
-    id: payment.external_reference || payment.metadata?.order_id || `mp_${paymentId}`,
-    name: payment.metadata?.customer_name || payerName || payer.nickname || 'cliente',
-    email: payment.metadata?.customer_email || payer.email || payment?.additional_info?.payer?.email || '',
-    whatsapp: payment.metadata?.customer_whatsapp || '',
-    amount: payment.transaction_amount || Number(env('PRODUCT_PRICE', '27.99')),
-    status: payment.status || 'unknown',
-    paymentId: String(paymentId),
-    paymentMethod: payment.payment_method_id || payment.payment_type_id || '',
-    paymentType: payment.payment_type_id || '',
-    source: payment.external_reference || payment.metadata?.order_id ? 'pedido_com_order_id' : 'pagamento_sem_order_id',
+function sameAmount(a, b) {
+  return Math.abs(Number(a || 0) - Number(b || 0)) < 0.01;
+}
+
+async function alreadySentForPayment(paymentId) {
+  const orders = await readOrders();
+  return orders.find((order) => String(order.paymentId) === String(paymentId) && order.emailSentAt);
+}
+
+async function sendApprovedPaymentWithoutOrder(payment) {
+  const paymentId = String(payment.id || '');
+  const productPrice = Number(env('PRODUCT_PRICE', '27.99'));
+  const amount = Number(payment.transaction_amount || 0);
+  const email = paymentEmail(payment);
+  const name = paymentName(payment);
+
+  if (!paymentId) {
+    console.log('Pagamento aprovado sem paymentId.');
+    return;
+  }
+
+  if (payment.status !== 'approved') {
+    console.log('Pagamento ainda não aprovado:', paymentId, payment.status);
+    return;
+  }
+
+  if (!email) {
+    console.error('Pagamento aprovado sem e-mail do comprador:', JSON.stringify({
+      paymentId,
+      status: payment.status,
+      amount,
+      payer: payment.payer
+    }));
+    return;
+  }
+
+  if (!sameAmount(amount, productPrice)) {
+    console.log('Pagamento aprovado ignorado por valor diferente:', JSON.stringify({
+      paymentId,
+      amount,
+      productPrice,
+      email
+    }));
+    return;
+  }
+
+  const alreadySent = await alreadySentForPayment(paymentId);
+  if (alreadySent) {
+    console.log('E-mail já enviado anteriormente para este pagamento:', email);
+    return;
+  }
+
+  const order = {
+    id: `mp-${paymentId}`,
+    name,
+    email,
+    whatsapp: '',
+    amount,
+    status: 'approved',
+    paymentId,
+    source: 'mercado-pago-sem-external-reference',
     paymentResponse: payment
   };
+
+  const emailResult = await sendMaterialEmail(order);
+
+  await saveOrder({
+    ...order,
+    emailSentAt: new Date().toISOString(),
+    emailResult
+  });
+
+  console.log('Material enviado para:', email);
 }
 
 async function processMercadoPagoPayment(paymentId) {
@@ -393,44 +416,33 @@ async function processMercadoPagoPayment(paymentId) {
 
     const payment = await paymentResponse.json();
 
-    if (!paymentResponse.ok) {
-      console.error('Pagamento não encontrado ou não autorizado:', JSON.stringify({
-        paymentId,
-        status: paymentResponse.status,
-        payment
-      }));
-      return;
-    }
-
     console.log('Webhook Mercado Pago:', JSON.stringify({
       paymentId,
       status: payment.status,
       external_reference: payment.external_reference,
-      payment_method_id: payment.payment_method_id,
-      payment_type_id: payment.payment_type_id,
-      payer_email: payment?.payer?.email
+      email: paymentEmail(payment),
+      amount: payment.transaction_amount
     }));
+
+    if (!paymentResponse.ok) {
+      console.error('Erro ao consultar pagamento Mercado Pago:', JSON.stringify(payment));
+      return;
+    }
 
     const orderId = payment.external_reference || payment.metadata?.order_id;
 
-    let order = null;
-
-    if (orderId) {
-      order = await findOrder(orderId);
+    if (!orderId) {
+      console.log('Pagamento sem external_reference. Enviando pelo e-mail do próprio Mercado Pago.');
+      await sendApprovedPaymentWithoutOrder(payment);
+      return;
     }
 
-    if (!order) {
-      order = await findOrderByPaymentId(paymentId);
-    }
+    const order = await findOrder(orderId);
 
     if (!order) {
-      order = buildOrderFromPayment(payment, paymentId);
-      console.log('Pedido criado a partir do pagamento Mercado Pago:', JSON.stringify({
-        id: order.id,
-        email: order.email,
-        paymentId: order.paymentId,
-        paymentMethod: order.paymentMethod
-      }));
+      console.log('Pedido não encontrado. Tentando enviar pelo e-mail do próprio Mercado Pago:', orderId);
+      await sendApprovedPaymentWithoutOrder(payment);
+      return;
     }
 
     if (payment.status !== 'approved') {
@@ -438,12 +450,8 @@ async function processMercadoPagoPayment(paymentId) {
         ...order,
         status: payment.status || 'unknown',
         paymentId: String(paymentId),
-        paymentMethod: payment.payment_method_id || payment.payment_type_id || order.paymentMethod || '',
-        paymentType: payment.payment_type_id || order.paymentType || '',
         paymentResponse: payment
       });
-
-      console.log('Pagamento ainda não aprovado:', paymentId, payment.status);
       return;
     }
 
@@ -452,40 +460,108 @@ async function processMercadoPagoPayment(paymentId) {
       return;
     }
 
-    const finalOrder = {
+    const emailResult = await sendMaterialEmail(order);
+
+    await saveOrder({
       ...order,
       status: 'approved',
       paymentId: String(paymentId),
-      paymentMethod: payment.payment_method_id || payment.payment_type_id || order.paymentMethod || '',
-      paymentType: payment.payment_type_id || order.paymentType || '',
-      paymentResponse: payment
-    };
-
-    const emailResult = await sendMaterialEmail(finalOrder);
-
-    await saveOrder({
-      ...finalOrder,
+      paymentResponse: payment,
       emailSentAt: new Date().toISOString(),
       emailResult
     });
 
-    console.log('Material enviado automaticamente para:', finalOrder.email);
+    console.log('Material enviado para:', order.email);
 
   } catch (error) {
     console.error('Erro ao processar pagamento/webhook:', error);
   }
 }
 
+let autoSyncStarted = false;
+
+async function syncApprovedPayments() {
+  try {
+    if (!process.env.MP_ACCESS_TOKEN) {
+      console.log('Sync Mercado Pago ignorado: MP_ACCESS_TOKEN ausente.');
+      return;
+    }
+
+    const lookbackHours = Number(env('PAYMENT_SYNC_LOOKBACK_HOURS', '6'));
+    const endDate = new Date();
+    const beginDate = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
+
+    const params = new URLSearchParams({
+      sort: 'date_created',
+      criteria: 'desc',
+      range: 'date_created',
+      begin_date: beginDate.toISOString(),
+      end_date: endDate.toISOString(),
+      status: 'approved',
+      limit: '20'
+    });
+
+    const response = await fetch(`https://api.mercadopago.com/v1/payments/search?${params.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${env('MP_ACCESS_TOKEN')}`
+      }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('Erro no sync Mercado Pago:', JSON.stringify(data));
+      return;
+    }
+
+    const payments = Array.isArray(data.results) ? data.results : [];
+
+    console.log('Sync Mercado Pago aprovado:', payments.length, 'pagamentos encontrados.');
+
+    for (const payment of payments) {
+      if (payment?.id) {
+        await processMercadoPagoPayment(payment.id);
+      }
+    }
+  } catch (error) {
+    console.error('Erro no sync automatico de pagamentos:', error);
+  }
+}
+
+function startPaymentAutoSync() {
+  if (autoSyncStarted) return;
+  autoSyncStarted = true;
+
+  const intervalMs = Number(env('PAYMENT_SYNC_INTERVAL_MS', '60000'));
+
+  setTimeout(syncApprovedPayments, 10000);
+  setInterval(syncApprovedPayments, intervalMs);
+
+  console.log('Sync automatico Mercado Pago ativo.');
+}
+
 app.post('/webhooks/mercadopago', async (req, res) => {
   res.sendStatus(200);
-  await processMercadoPagoPayment(extractPaymentId(req));
+
+  const paymentId =
+    req.body?.data?.id ||
+    req.query?.id ||
+    req.query?.['data.id'];
+
+  await processMercadoPagoPayment(paymentId);
 });
 
 app.get('/webhooks/mercadopago', async (req, res) => {
   res.sendStatus(200);
-  await processMercadoPagoPayment(extractPaymentId(req));
+
+  const paymentId =
+    req.query?.id ||
+    req.query?.['data.id'];
+
+  await processMercadoPagoPayment(paymentId);
 });
 
 app.listen(PORT, () => {
   console.log('Servidor rodando');
+  startPaymentAutoSync();
 });
