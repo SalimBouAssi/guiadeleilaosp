@@ -94,11 +94,11 @@ footer{text-align:center;padding:35px;color:#999;background:#050505}
 <div class="card">
 <h2>Calculadora de Margem do Leilão</h2>
 <p>Preencha os campos abaixo para simular a margem estimada. Use valores conservadores e sempre considere uma margem de segurança.</p>
-<input id="fipe" type="number" placeholder="Valor FIPE">
-<input id="lance" type="number" placeholder="Valor do Lance">
-<input id="reparos" type="number" placeholder="Estimativa de Reparos">
-<input id="taxas" type="number" placeholder="Taxas do Leilão">
-<input id="transporte" type="number" placeholder="Transporte / Guincho">
+<input id="fipe" type="text" inputmode="decimal" placeholder="Valor FIPE">
+<input id="lance" type="text" inputmode="decimal" placeholder="Valor do Lance">
+<input id="reparos" type="text" inputmode="decimal" placeholder="Estimativa de Reparos">
+<input id="taxas" type="text" inputmode="decimal" placeholder="Taxas do Leilão">
+<input id="transporte" type="text" inputmode="decimal" placeholder="Transporte / Guincho">
 <button onclick="calcularMargem()">CALCULAR MARGEM</button>
 <div id="resultado" class="resultado"></div>
 </div>
@@ -127,24 +127,85 @@ footer{text-align:center;padding:35px;color:#999;background:#050505}
 <footer>Leilão Inteligente SP © 2026</footer>
 
 <script>
+function parseValorBR(valor){
+    let texto = String(valor || '').trim();
+
+    if (!texto) return 0;
+
+    // Remove R$, espaços e qualquer caractere que não seja número, ponto, vírgula ou sinal negativo
+    texto = texto.replace(/[^0-9,.-]/g, '');
+
+    const temVirgula = texto.includes(',');
+    const temPonto = texto.includes('.');
+
+    // Formato brasileiro: 10.000,50
+    if (temVirgula) {
+        texto = texto.replace(/\./g, '').replace(',', '.');
+        return Number(texto) || 0;
+    }
+
+    // Formato com ponto, pode ser milhar ou decimal
+    if (temPonto) {
+        const partes = texto.split('.');
+        const ultimaParte = partes[partes.length - 1];
+
+        // 10.000 / 5.000 / 2.000 = milhar
+        if (partes.length > 1 && ultimaParte.length === 3) {
+            texto = texto.replace(/\./g, '');
+            return Number(texto) || 0;
+        }
+
+        // 100.00 = decimal normal
+        return Number(texto) || 0;
+    }
+
+    return Number(texto) || 0;
+}
+
+function formatarMoeda(valor){
+    return valor.toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+    });
+}
+
 function calcularMargem(){
-    const fipe = Number(document.getElementById('fipe').value || 0);
-    const lance = Number(document.getElementById('lance').value || 0);
-    const reparos = Number(document.getElementById('reparos').value || 0);
-    const taxas = Number(document.getElementById('taxas').value || 0);
-    const transporte = Number(document.getElementById('transporte').value || 0);
+    const fipe = parseValorBR(document.getElementById('fipe').value);
+    const lance = parseValorBR(document.getElementById('lance').value);
+    const reparos = parseValorBR(document.getElementById('reparos').value);
+    const taxas = parseValorBR(document.getElementById('taxas').value);
+    const transporte = parseValorBR(document.getElementById('transporte').value);
+
     const custoTotal = lance + reparos + taxas + transporte;
     const lucroEstimado = fipe - custoTotal;
-    const margem = fipe > 0 ? (lucroEstimado / fipe) * 100 : 0;
+
+    // Margem correta para leilão: lucro sobre o dinheiro investido no carro
+    const margem = custoTotal > 0 ? (lucroEstimado / custoTotal) * 100 : 0;
+
     let status = '', cor = '';
-    if(lucroEstimado <= 0){status='❌ Risco alto, possível prejuízo';cor='#ff4444'}
-    else if(margem < 10){status='⚠️ Margem baixa, analise com cuidado';cor='#ffd000'}
-    else if(margem < 20){status='✅ Margem interessante';cor='#00c853'}
-    else{status='🔥 Excelente oportunidade';cor='#ff7a00'}
+
+    if (fipe <= 0 || custoTotal <= 0) {
+        status = '⚠️ Preencha FIPE e custos para calcular corretamente';
+        cor = '#ffd000';
+    } else if (lucroEstimado <= 0) {
+        status = '❌ Risco alto, possível prejuízo';
+        cor = '#ff4444';
+    } else if (margem < 10) {
+        status = '⚠️ Margem baixa, analise com cuidado';
+        cor = '#ffd000';
+    } else if (margem < 20) {
+        status = '✅ Margem interessante';
+        cor = '#00c853';
+    } else {
+        status = '🔥 Excelente oportunidade';
+        cor = '#ff7a00';
+    }
+
     document.getElementById('resultado').innerHTML = `
-        <strong>Custo total estimado:</strong> R$ ${custoTotal.toLocaleString('pt-BR')}<br>
-        <strong>Lucro estimado:</strong> R$ ${lucroEstimado.toLocaleString('pt-BR')}<br>
-        <strong>Margem estimada:</strong> ${margem.toFixed(2)}%<br><br>
+        <strong>Valor FIPE:</strong> ${formatarMoeda(fipe)}<br>
+        <strong>Custo total estimado:</strong> ${formatarMoeda(custoTotal)}<br>
+        <strong>Lucro estimado:</strong> ${formatarMoeda(lucroEstimado)}<br>
+        <strong>Margem sobre investimento:</strong> ${margem.toFixed(2).replace('.', ',')}%<br><br>
         <strong style="color:${cor};">${status}</strong>`;
 }
 </script>
