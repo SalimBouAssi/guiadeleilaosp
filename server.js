@@ -20,6 +20,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'data', 'orders.json');
 const FALLBACK_CHECKOUT = 'https://mpago.la/2ESH1hL';
+const EMAIL_SEND_VERSION = 'attachment-dmarc-v2';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -76,19 +77,23 @@ async function sendMaterialEmail(order) {
     throw new Error('RESEND_API_KEY ausente no Railway.');
   }
 
+  if (!order.email) {
+    throw new Error('E-mail do comprador ausente.');
+  }
+
   const materialFile = env('MATERIAL_FILE', 'material/material.html');
   const materialPath = path.join(__dirname, materialFile);
   const fileBuffer = await fs.readFile(materialPath);
 
   const html = `
     <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
-      <h2>Leilao Inteligente SP</h2>
-      <p>Ola, ${order.name || 'cliente'}.</p>
+      <h2>Leilão Inteligente SP</h2>
+      <p>Olá, ${order.name || 'cliente'}.</p>
       <p>Pagamento confirmado.</p>
-      <p>Seu material digital esta em anexo neste e-mail.</p>
-      <p><strong>Produto:</strong> Leilao Inteligente SP</p>
+      <p>Seu material digital está em anexo neste e-mail.</p>
+      <p><strong>Produto:</strong> Leilão Inteligente SP</p>
       <p><strong>Valor:</strong> R$ ${Number(order.amount || 27.99).toFixed(2).replace('.', ',')}</p>
-      <p>Este material e informativo e educacional. Nao garante lucro, arrematacao ou resultado financeiro especifico.</p>
+      <p>Este material é informativo e educacional. Não garante lucro, arrematação ou resultado financeiro específico.</p>
       <p>Obrigado pela compra.</p>
     </div>
   `;
@@ -96,7 +101,7 @@ async function sendMaterialEmail(order) {
   return await resend.emails.send({
     from: env('FROM_EMAIL', 'suporte@guiadeleilaosp.com.br'),
     to: [order.email],
-    subject: 'Seu material Leilao Inteligente SP',
+    subject: 'Seu material Leilão Inteligente SP',
     html,
     attachments: [
       {
@@ -332,7 +337,11 @@ function sameAmount(a, b) {
 
 async function alreadySentForPayment(paymentId) {
   const orders = await readOrders();
-  return orders.find((order) => String(order.paymentId) === String(paymentId) && order.emailSentAt);
+  return orders.find((order) =>
+    String(order.paymentId) === String(paymentId) &&
+    order.emailSentAt &&
+    order.emailSendVersion === EMAIL_SEND_VERSION
+  );
 }
 
 async function sendApprovedPaymentWithoutOrder(payment) {
@@ -395,6 +404,7 @@ async function sendApprovedPaymentWithoutOrder(payment) {
   await saveOrder({
     ...order,
     emailSentAt: new Date().toISOString(),
+    emailSendVersion: EMAIL_SEND_VERSION,
     emailResult
   });
 
@@ -455,9 +465,13 @@ async function processMercadoPagoPayment(paymentId) {
       return;
     }
 
-    if (order.emailSentAt) {
+    if (order.emailSentAt && order.emailSendVersion === EMAIL_SEND_VERSION) {
       console.log('E-mail já enviado anteriormente:', order.email);
       return;
+    }
+
+    if (order.emailSentAt && order.emailSendVersion !== EMAIL_SEND_VERSION) {
+      console.log('Reenviando material após ajuste de entregabilidade:', order.email);
     }
 
     const emailResult = await sendMaterialEmail(order);
@@ -468,6 +482,7 @@ async function processMercadoPagoPayment(paymentId) {
       paymentId: String(paymentId),
       paymentResponse: payment,
       emailSentAt: new Date().toISOString(),
+      emailSendVersion: EMAIL_SEND_VERSION,
       emailResult
     });
 
